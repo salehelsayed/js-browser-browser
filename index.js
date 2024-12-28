@@ -52,7 +52,21 @@ const libp2p = await createLibp2p({
     webSockets({
       filter: filters.all
     }),
-    webRTC(),
+    //webRTC(),
+    webRTC({
+      iceServers: [
+        // Keep/override the default STUN server
+        { urls: 'stun:50.18.80.137:3478' },
+  
+        // Add your TURN server here (if you have one)
+        // e.g. 'turn:my-turn-server.example.org:3478'
+        {
+          urls: 'turn:50.18.80.137:3478',
+          username: 'user1',
+          credential: 'key1'
+        }
+      ]
+    }),
     circuitRelayTransport()
   ],
   connectionEncrypters: [noise()],
