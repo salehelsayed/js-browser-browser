@@ -7,14 +7,20 @@ import { identify } from '@libp2p/identify'
 import { webSockets } from '@libp2p/websockets'
 import * as filters from '@libp2p/websockets/filters'
 import { createLibp2p } from 'libp2p'
-import { autoNAT } from '@libp2p/autonat'     // ← from latest docs
+import { autoNAT } from '@libp2p/autonat'
 import { dcutr } from '@libp2p/dcutr'
 
 const node = await createLibp2p({
   addresses: {
+    // 1) Listen on TCP port 4001 for WebSockets on all interfaces
     listen: [
-      // Listen on all interfaces so NAT manager can attempt UPnP port mapping
-      '/ip4/0.0.0.0/tcp/0/ws'
+      '/ip4/0.0.0.0/tcp/4001/ws'
+    ],
+
+    // 2) Explicitly announce your public IP so remote peers can dial it
+    //    Replace with your actual public IP or domain.
+    announce: [
+      '/ip4/78.43.40.133/tcp/4001/ws'
     ]
   },
   transports: [
@@ -34,9 +40,9 @@ const node = await createLibp2p({
       }
     }),
 
-    // The "autoNAT" key from docs, enabling NAT detection
+    // AutoNAT for NAT detection
     autoNAT: autoNAT({
-      // optional config
+      // (optional) further config
     }),
 
     // DCUtR for hole punching
@@ -45,7 +51,11 @@ const node = await createLibp2p({
 
   // NAT config (UPnP / NAT-PMP)
   nat: {
-    enabled: true
+    enabled: true,
+
+    // (optional) Force Libp2p to assume this is our external IP.
+    // If UPnP fails, we’ll still advertise this address.
+    // externalAddress: 'YOUR.PUBLIC.IP'
   }
 })
 
