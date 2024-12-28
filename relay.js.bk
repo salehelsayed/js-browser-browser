@@ -1,0 +1,52 @@
+/* eslint-disable no-console */
+
+import { noise } from '@chainsafe/libp2p-noise'
+import { yamux } from '@chainsafe/libp2p-yamux'
+import { circuitRelayServer } from '@libp2p/circuit-relay-v2'
+import { identify } from '@libp2p/identify'
+import { webSockets } from '@libp2p/websockets'
+import * as filters from '@libp2p/websockets/filters'
+import { createLibp2p } from 'libp2p'
+
+const PUBLIC_PORT = 8080 // Choose a fixed port that's open
+
+async function startRelay() {
+  try {
+    const server = await createLibp2p({
+      addresses: {
+        // Option 1: Listen on a specific IPv6 address
+        // Replace 'YOUR_IPV6_ADDRESS' with your actual IPv6 address
+        //listen: [`/ip6/2a02:8070:8889:4fc0:b5a0:c070:6197:ef44/tcp/${PUBLIC_PORT}/ws`]
+
+        // Option 2: Listen on all IPv6 interfaces
+        listen: [`/ip4/0.0.0.0/tcp/${PUBLIC_PORT}/ws`]
+      },
+      announce: [
+        // Insert your temporary/public address here
+        `/ip6/2a02:8070:8889:4fc0:b5a0:c070:6197:ef44/tcp/${PUBLIC_PORT}/ws`
+      ],
+      transports: [
+        webSockets({
+          filter: filters.all
+        })
+      ],
+      connectionEncrypters: [noise()],
+      streamMuxers: [yamux()],
+      services: {
+        identify: identify(),
+        relay: circuitRelayServer({
+          reservations: {
+            maxReservations: Infinity
+          }
+        })
+      }
+    })
+
+    const multiaddrs = server.getMultiaddrs().map(ma => ma.toString())
+    console.log('Relay listening on multiaddr(s): ', multiaddrs)
+  } catch (error) {
+    console.error('Failed to start relay server:', error)
+  }
+}
+
+startRelay()

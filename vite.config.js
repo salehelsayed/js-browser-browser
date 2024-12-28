@@ -1,11 +1,11 @@
-export default {
-  build: {
-    target: 'es2022'
-  },
-  optimizeDeps: {
-    esbuildOptions: { target: 'es2022', supported: { bigint: true } }
-  },
+import { defineConfig } from 'vite'
+
+export default defineConfig({
   server: {
-    open: true
-  }
-}
+    host: '0.0.0.0',
+    port: 5173,
+    strictPort: false,
+    open: true,
+  },
+})
+

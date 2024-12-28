@@ -11,9 +11,6 @@ import { multiaddr } from '@multiformats/multiaddr'
 import { createLibp2p } from 'libp2p'
 import { fromString, toString } from 'uint8arrays'
 
-// From the docs
-import { autoNAT } from '@libp2p/autonat'
-
 const DOM = {
   peerId: () => document.getElementById('peer-id'),
 
@@ -38,38 +35,58 @@ const appendOutput = (line) => {
 }
 const clean = (line) => line.replaceAll('\n', '')
 
-// Create our browser-based libp2p node
 const libp2p = await createLibp2p({
   addresses: {
     listen: [
-      // ephemeral WebRTC addresses
-      '/webrtc',
-      // circuit addresses (to accept inbound via relay)
-      '/p2p-circuit'
+      // make a reservation on any discovered relays - this will let other
+      // peers use the relay to contact us
+      '/p2p-circuit',
+      // create listeners for incoming WebRTC connection attempts on on all
+      // available Circuit Relay connections
+      '/webrtc'
     ]
   },
   transports: [
+    // the WebSocket transport lets us dial a local relay
     webSockets({
+      // this allows non-secure WebSocket connections for purposes of the demo
       filter: filters.all
     }),
-    webRTC(),
+    // support dialing/listening on WebRTC addresses
+    //webRTC(),
+    webRTC({
+      iceServers: [
+        // Keep/override the default STUN server
+        { urls: 'stun:50.18.80.137:3478' },
+  
+        // Add your TURN server here (if you have one)
+        // e.g. 'turn:my-turn-server.example.org:3478'
+        {
+          urls: 'turn:50.18.80.137:3478',
+          username: 'user1',
+          credential: 'key1'
+        }
+      ]
+    }),
+    // support dialing/listening on Circuit Relay addresses
     circuitRelayTransport()
   ],
+  // a connection encrypter is necessary to dial the relay
   connectionEncrypters: [noise()],
+  // a stream muxer is necessary to dial the relay
   streamMuxers: [yamux()],
   connectionGater: {
-    // allow local/unroutable addresses for example’s sake
-    denyDialMultiaddr: () => false
+    denyDialMultiaddr: () => {
+      // by default we refuse to dial local addresses from browsers since they
+      // are usually sent by remote peers broadcasting undialable multiaddrs and
+      // cause errors to appear in the console but in this example we are
+      // explicitly connecting to a local node so allow all addresses
+      return false
+    }
   },
   services: {
     identify: identify(),
     pubsub: gossipsub(),
-
-    // This key matches the docs: autoNAT
-    autoNAT: autoNAT({
-      // optional config
-    }),
-
     dcutr: dcutr()
   }
 })
@@ -77,25 +94,29 @@ const libp2p = await createLibp2p({
 DOM.peerId().innerText = libp2p.peerId.toString()
 
 function updatePeerList () {
+  // Update connections list
   const peerList = libp2p.getPeers()
     .map(peerId => {
       const el = document.createElement('li')
       el.textContent = peerId.toString()
 
       const addrList = document.createElement('ul')
+
       for (const conn of libp2p.getConnections(peerId)) {
         const addr = document.createElement('li')
         addr.textContent = conn.remoteAddr.toString()
+
         addrList.appendChild(addr)
       }
 
       el.appendChild(addrList)
+
       return el
     })
   DOM.peerConnectionsList().replaceChildren(...peerList)
 }
 
-// Update connections list
+// update peer connections
 libp2p.addEventListener('connection:open', () => {
   updatePeerList()
 })
@@ -103,7 +124,7 @@ libp2p.addEventListener('connection:close', () => {
   updatePeerList()
 })
 
-// Update listening addresses
+// update listening addresses
 libp2p.addEventListener('self:peer:update', () => {
   const multiaddrs = libp2p.getMultiaddrs()
     .map((ma) => {
@@ -114,7 +135,7 @@ libp2p.addEventListener('self:peer:update', () => {
   DOM.listeningAddressesList().replaceChildren(...multiaddrs)
 })
 
-// Dial a remote peer
+// dial remote peer
 DOM.dialMultiaddrButton().onclick = async () => {
   const ma = multiaddr(DOM.dialMultiaddrInput().value)
   appendOutput(`Dialing '${ma}'`)
@@ -122,17 +143,18 @@ DOM.dialMultiaddrButton().onclick = async () => {
   appendOutput(`Connected to '${ma}'`)
 }
 
-// Subscribe to a pubsub topic
+// subscribe to pubsub topic
 DOM.subscribeTopicButton().onclick = async () => {
   const topic = DOM.subscribeTopicInput().value
   appendOutput(`Subscribing to '${clean(topic)}'`)
 
   libp2p.services.pubsub.subscribe(topic)
+
   DOM.sendTopicMessageInput().disabled = undefined
   DOM.sendTopicMessageButton().disabled = undefined
 }
 
-// Publish a message
+// send message to topic
 DOM.sendTopicMessageButton().onclick = async () => {
   const topic = DOM.subscribeTopicInput().value
   const message = DOM.sendTopicMessageInput().value
@@ -141,9 +163,10 @@ DOM.sendTopicMessageButton().onclick = async () => {
   await libp2p.services.pubsub.publish(topic, fromString(message))
 }
 
-// Update the topic peers periodically
+// update topic peers
 setInterval(() => {
   const topic = DOM.subscribeTopicInput().value
+
   const peerList = libp2p.services.pubsub.getSubscribers(topic)
     .map(peerId => {
       const el = document.createElement('li')
@@ -153,7 +176,6 @@ setInterval(() => {
   DOM.topicPeerList().replaceChildren(...peerList)
 }, 500)
 
-// Listen for incoming pubsub messages
 libp2p.services.pubsub.addEventListener('message', event => {
   const topic = event.detail.topic
   const message = toString(event.detail.data)
